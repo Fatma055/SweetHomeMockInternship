@@ -42,7 +42,6 @@ import java.util.HashSet;
 import java.util.MissingResourceException;
 import java.util.ResourceBundle;
 import java.util.Set;
-
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 
@@ -341,53 +340,94 @@ public class HomePrintableComponent extends JComponent implements Printable {
             clipBounds.width, (int)pageFormat.getImageableHeight());
       }
     }
-    
+
+
     View furnitureView = this.controller.getFurnitureController().getView();
-    if (furnitureView != null 
-        && (homePrint == null || homePrint.isFurniturePrinted())) {
+    if (furnitureView != null
+            && (homePrint == null || homePrint.isFurniturePrinted())) {
       FurnitureTable furnitureTable = null;
       final FurnitureTable.FurnitureFilter furnitureFilter;
       if (furnitureView instanceof FurnitureTable
-          && (homePrint == null
+              && (homePrint == null
               || homePrint.isPlanPrinted()
               || homePrint.isView3DPrinted())) {
-        final Level selectedLevel = home.getSelectedLevel();
         furnitureTable = (FurnitureTable)furnitureView;
         furnitureFilter = furnitureTable.getFurnitureFilter();
         furnitureTable.setFurnitureFilter(new FurnitureTable.FurnitureFilter() {
-            public boolean include(Home home, HomePieceOfFurniture piece) {
-              // Print only furniture at selected level when the plan or the 3D view is printed
-              return (furnitureFilter == null || furnitureFilter.include(home, piece))
-                  && piece.isAtLevel(selectedLevel)
-                  && (piece.getLevel() == null || piece.getLevel().isViewable());
-            }
-          });
+          public boolean include(Home home, HomePieceOfFurniture piece) {
+            return (furnitureFilter == null || furnitureFilter.include(home, piece))
+                    && (piece.getLevel() == null || piece.getLevel().isViewable());
+          }
+        });
       } else {
         furnitureFilter = null;
       }
-      // Try to print next furniture view page      
+
+      // Try to print next furniture view page
       pageExists = ((Printable)furnitureView).print(g2D, pageFormat, page);
+
       if (furnitureTable != null) {
         // Restore previous filter
         ((FurnitureTable)furnitureView).setFurnitureFilter(furnitureFilter);
       }
+
       if (pageExists == PAGE_EXISTS
-          && !this.printablePages.contains(page)) {
+              && !this.printablePages.contains(page)) {
         this.printablePages.add(page);
         this.furniturePageCount++;
       }
     }
-    if (pageExists == NO_SUCH_PAGE 
-        && planView != null 
-        && (homePrint == null || homePrint.isPlanPrinted())) {
+
+
+    if (pageExists == NO_SUCH_PAGE
+            && planView != null
+            && (homePrint == null || homePrint.isPlanPrinted())) {
+
       // Try to print next plan view page
-      pageExists = ((Printable)planView).print(g2D, pageFormat, page - this.furniturePageCount);
+      Level selectedLevel = this.home.getSelectedLevel();
+      BufferedImage dummyImage = new BufferedImage(
+              1, 1, BufferedImage.TYPE_INT_RGB);
+      Graphics dummyGraphics = dummyImage.getGraphics();
+
+      try {
+        int requestedPlanPage = page - this.furniturePageCount;
+
+        for (Level level : this.home.getLevels()) {
+          if (level.isViewable()) {
+            this.home.setSelectedLevel(level);
+
+            int levelPage = 0;
+
+            while (((Printable)planView).print(
+                    dummyGraphics, pageFormat, levelPage) == PAGE_EXISTS) {
+
+              if (requestedPlanPage == 0) {
+                pageExists = ((Printable)planView).print(
+                        g2D, pageFormat, levelPage);
+                break;
+              }
+
+              requestedPlanPage--;
+              levelPage++;
+            }
+
+            if (pageExists == PAGE_EXISTS) {
+              break;
+            }
+          }
+        }
+      } finally {
+        this.home.setSelectedLevel(selectedLevel);
+        dummyGraphics.dispose();
+      }
+
       if (pageExists == PAGE_EXISTS
-          && !this.printablePages.contains(page)) {
+              && !this.printablePages.contains(page)) {
         this.printablePages.add(page);
         this.planPageCount++;
       }
     }
+
     View view3D = this.controller.getHomeController3D().getView();
     if (pageExists == NO_SUCH_PAGE
         && view3D != null
